@@ -22,10 +22,14 @@ class Settings(BaseSettings):
     # --- Redis ---
     redis_url: str = "redis://localhost:6379/0"
 
+    # --- Qdrant ---
+    qdrant_url: str = "http://localhost:6333"
+
     # --- GitLab ---
     gitlab_url: str = "https://gitlab.com"
     gitlab_app_id: str = ""
     gitlab_app_secret: str = ""
+    gitlab_personal_access_token: str = ""
 
     # --- Google Gemini ---
     gemini_api_key: str = ""
