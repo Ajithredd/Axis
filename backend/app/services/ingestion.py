@@ -20,6 +20,7 @@ from app.models.project import ProjectConnector, SyncStatus
 from app.connectors.base import NormalizedEvent
 from app.connectors.registry import connector_registry
 from app.services.embedding import chunk_text, content_hash, generate_embeddings
+from app.services.graph_ingestion import GraphIngestionEngine
 
 
 async def ingest_project(
@@ -49,7 +50,9 @@ async def ingest_project(
         )
 
         # Process events
-        stats = {"events_created": 0, "events_skipped": 0, "embeddings_created": 0}
+        stats = {"events_created": 0, "events_skipped": 0, "embeddings_created": 0, "graph_updates": 0}
+
+        graph_engine = GraphIngestionEngine(db)
 
         for norm_event in normalized_events:
             # Check for duplicates by source_id
@@ -93,6 +96,17 @@ async def ingest_project(
                     )
                     stats["embeddings_created"] += embeddings_created
 
+            # Hook: process event into Intelligence Graph
+            try:
+                graph_stats = await graph_engine.process_event(event)
+                stats["graph_updates"] += sum(graph_stats.values())
+            except Exception as e:
+                # Graph enrichment is non-blocking — log and continue
+                import logging
+                logging.getLogger(__name__).warning(
+                    f"Graph ingestion failed for event {event.id}: {e}"
+                )
+
         # Update sync status
         project_connector.sync_status = SyncStatus.SYNCED
         project_connector.last_synced_at = datetime.utcnow()
@@ -117,7 +131,9 @@ async def ingest_webhook_events(
     Process events received via webhook.
     Same logic as full sync but for individual events.
     """
-    stats = {"events_created": 0, "events_updated": 0, "embeddings_created": 0}
+    stats = {"events_created": 0, "events_updated": 0, "embeddings_created": 0, "graph_updates": 0}
+
+    graph_engine = GraphIngestionEngine(db)
 
     for norm_event in normalized_events:
         # Check for existing event (upsert logic)
@@ -174,6 +190,16 @@ async def ingest_webhook_events(
                 if chunks:
                     count = await _embed_chunks(db, event, chunks)
                     stats["embeddings_created"] += count
+
+            # Hook: process event into Intelligence Graph
+            try:
+                graph_stats = await graph_engine.process_event(event)
+                stats["graph_updates"] += sum(graph_stats.values())
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(
+                    f"Graph ingestion failed for event {event.id}: {e}"
+                )
 
     await db.commit()
     return stats
