@@ -33,8 +33,8 @@ class Settings(BaseSettings):
 
     # --- Google Gemini ---
     gemini_api_key: str = ""
-    embedding_model: str = "text-embedding-004"
-    embedding_dimensions: int = 768
+    embedding_model: str = "gemini-embedding-001"
+    embedding_dimensions: int = 3072
     llm_model: str = "gemini-2.5-flash"
 
     # --- Chunking ---
