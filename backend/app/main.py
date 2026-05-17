@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import init_db
-from app.api import auth, graph, projects, search, webhooks
+from app.api import auth, graph, projects, search, webhooks, chat
 from app.connectors.registry import connector_registry
 
 
@@ -48,6 +48,7 @@ app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 app.include_router(graph.router, prefix="/api/graph", tags=["Intelligence Graph"])
 app.include_router(projects.router, prefix="/api/projects", tags=["Projects"])
 app.include_router(search.router, prefix="/api/search", tags=["Search"])
+app.include_router(chat.router, prefix="/api/chat", tags=["AI Chat"])
 app.include_router(webhooks.router, prefix="/api/webhooks", tags=["Webhooks"])
 
 
