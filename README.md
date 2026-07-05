@@ -30,10 +30,10 @@ Axis replaces manual communication channels with a system-owned source of truth:
 ```mermaid
 graph TD
     %% Ingestion Sources
-    GitLab[GitLab Webhooks & API] --> Ingestion[Ingestion Controller]
-    Confluence[Confluence API]* --> Ingestion
-    Slack[Slack Webhooks]* --> Ingestion
-    Transcripts[Meeting Transcripts / Email]* --> Ingestion
+    GitLab[GitLab Webhooks and API] --> Ingestion[Ingestion Controller]
+    Confluence[Confluence API] --> Ingestion
+    Slack[Slack Webhooks] --> Ingestion
+    Transcripts[Meeting Transcripts and Email] --> Ingestion
     
     %% Processing & Storage
     Ingestion --> EventQueue[Redis Event Queue]
@@ -48,8 +48,8 @@ graph TD
     API --> VectorStore
     API --> AgenticCore
 
-    classDef future stroke-dasharray: 5 5;
-    class Confluence,Slack,Transcripts future;
+    classDef future stroke-dasharray: 5 5
+    class Confluence,Slack,Transcripts future
 ```
 *\* Coming soon*
 

@@ -6,15 +6,15 @@ The AI Alignment Engine operates as a three-tier system comprising an **Ingestio
 ```mermaid
 graph TD
     %% Ingestion Sources
-    GitLab[GitLab Webhooks & API] --> Ingestion[Spring Boot Ingestion Controller]
+    GitLab[GitLab Webhooks and API] --> Ingestion[Spring Boot Ingestion Controller]
     Confluence[Confluence API] --> Ingestion
     Slack[Slack Webhooks] --> Ingestion
-    Transcripts[Meeting Transcripts / Email] --> Ingestion
+    Transcripts[Meeting Transcripts and Email] --> Ingestion
     
     %% Processing & Storage
-    Ingestion --> EventBus[Spring Event Bus / Queue]
+    Ingestion --> EventBus[Spring Event Bus and Queue]
     EventBus --> Processor[Spring Boot Event Processor]
-    Processor --> AgenticCore[AI Orchestrator: LangGraph / LlamaIndex]
+    Processor --> AgenticCore[AI Orchestrator LangGraph and LlamaIndex]
     
     AgenticCore --> RelationalDB[(PostgreSQL)]
     AgenticCore --> VectorStore[(Qdrant Vector DB)]
