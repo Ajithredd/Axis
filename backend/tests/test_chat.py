@@ -86,7 +86,7 @@ async def test_chat_and_rag_pipeline():
                 del chat_sessions[session_id]
 
             # 2. Test RAG service layer
-            result = await retrieve_and_generate(
+            result, metrics = await retrieve_and_generate(
                 db=db,
                 query="How is authentication supported?",
                 project_id=project.id,

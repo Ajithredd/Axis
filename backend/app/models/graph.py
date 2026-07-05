@@ -13,7 +13,7 @@ from enum import Enum as PyEnum
 
 from sqlalchemy import (
     String, DateTime, ForeignKey, Text, Enum, Float, Integer,
-    UniqueConstraint, Index, func,
+    UniqueConstraint, Index, CheckConstraint, func,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -237,6 +237,15 @@ class Stakeholder(Base):
 
 
 # ---------------------------------------------------------------------------
+# Valid node types for graph edges
+# ---------------------------------------------------------------------------
+
+VALID_NODE_TYPES = frozenset({
+    "features", "requirements", "decisions", "stakeholders", "events",
+})
+
+
+# ---------------------------------------------------------------------------
 # Graph Edge (the connective tissue)
 # ---------------------------------------------------------------------------
 
@@ -294,6 +303,15 @@ class GraphEdge(Base):
         # Fast lookups by source or target
         Index("ix_graph_edge_source", "source_type", "source_id"),
         Index("ix_graph_edge_target", "target_type", "target_id"),
+        # Ensure only valid node types are stored
+        CheckConstraint(
+            "source_type IN ('features', 'requirements', 'decisions', 'stakeholders', 'events')",
+            name="ck_graph_edge_source_type",
+        ),
+        CheckConstraint(
+            "target_type IN ('features', 'requirements', 'decisions', 'stakeholders', 'events')",
+            name="ck_graph_edge_target_type",
+        ),
     )
 
     def __repr__(self) -> str:

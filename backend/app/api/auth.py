@@ -12,6 +12,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -117,6 +118,32 @@ async def get_current_user(user_id: str, db: AsyncSession = Depends(get_db)):
         "avatar_url": user.avatar_url,
         "has_gitlab": user.gitlab_access_token is not None,
     }
+
+
+class TokenRequest(BaseModel):
+    user_id: str
+    connector_type: str
+    access_token: str
+
+@router.post("/token")
+async def save_access_token(req: TokenRequest, db: AsyncSession = Depends(get_db)):
+    """Save a personal access token for a connector (bypassing OAuth)."""
+    try:
+        uid = uuid.UUID(req.user_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid user ID")
+
+    result = await db.execute(select(User).where(User.id == uid))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    if req.connector_type == "gitlab":
+        user.gitlab_access_token = req.access_token
+        await db.commit()
+        return {"status": "success", "message": "GitLab token saved"}
+    
+    raise HTTPException(400, f"Unsupported connector type for direct token auth: {req.connector_type}")
 
 
 @router.get("/connectors")

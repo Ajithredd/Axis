@@ -405,13 +405,26 @@ async def get_feature_context(
     }
 
 
-async def get_node_with_edges(db: AsyncSession, node_id: uuid.UUID) -> dict[str, Any]:
-    """Get a node's incoming and outgoing edges by its ID."""
+async def get_node_with_edges(
+    db: AsyncSession,
+    node_id: uuid.UUID,
+    node_type: str | None = None,
+) -> dict[str, Any]:
+    """Get a node's incoming and outgoing edges by its ID and optional type.
+
+    When *node_type* is provided the query is scoped to edges whose
+    target/source type matches, avoiding false positives from UUID
+    collisions across tables.
+    """
     stmt_in = select(GraphEdge).where(GraphEdge.target_id == node_id)
+    if node_type:
+        stmt_in = stmt_in.where(GraphEdge.target_type == node_type)
     res_in = await db.execute(stmt_in)
     incoming = list(res_in.scalars().all())
 
     stmt_out = select(GraphEdge).where(GraphEdge.source_id == node_id)
+    if node_type:
+        stmt_out = stmt_out.where(GraphEdge.source_type == node_type)
     res_out = await db.execute(stmt_out)
     outgoing = list(res_out.scalars().all())
 

@@ -17,9 +17,21 @@ class EmbeddingEngine:
         if not self.api_key:
             logger.warning("gemini_api_key is not set in configuration. Embeddings will fail.")
         
-        # Initialize client. The new SDK uses `genai.Client`
-        self.client = genai.Client(api_key=self.api_key)
         self.model = settings.embedding_model
+        self._loop = None
+
+    @property
+    def client(self) -> genai.Client:
+        """Get or create the genai.Client bound to the current running event loop."""
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+
+        if not hasattr(self, "_client_instance") or self._loop != current_loop:
+            self._client_instance = genai.Client(api_key=self.api_key)
+            self._loop = current_loop
+        return self._client_instance
 
     async def generate_embedding(self, text: str, retries: int = 3) -> Optional[List[float]]:
         """

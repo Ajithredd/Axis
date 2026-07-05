@@ -14,10 +14,13 @@ from app.database import Base
 
 class Embedding(Base):
     """
-    A vector embedding of a text chunk from an Event.
+    A vector embedding of a text chunk from an Event (pgvector).
 
-    Large events get split into chunks, each stored with its own
-    embedding vector for semantic search via pgvector.
+    .. deprecated::
+        This model is **no longer written to** during ingestion.
+        All new embeddings are stored in Qdrant via ``vector_sync``.
+        This table is retained for backward compatibility with existing
+        data and can be dropped once data has been migrated.
     """
     __tablename__ = "embeddings"
 
@@ -60,7 +63,7 @@ class Embedding(Base):
     )
 
     # Relationships
-    event: Mapped["Event"] = relationship(back_populates="embeddings")
+    event: Mapped["Event"] = relationship()
 
     def __repr__(self) -> str:
         return f"<Embedding chunk {self.chunk_index} of event {self.event_id}>"

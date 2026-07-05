@@ -228,7 +228,7 @@ class GitLabConnector(BaseConnector):
             actor_name=issue.get("author", {}).get("name"),
             actor_email=issue.get("author", {}).get("email"),
             source_timestamp=_parse_dt(issue.get("updated_at") or issue.get("created_at")),
-            metadata={
+            extra={
                 "iid": issue.get("iid"),
                 "state": issue.get("state"),
                 "labels": [l for l in issue.get("labels", [])],
@@ -250,7 +250,7 @@ class GitLabConnector(BaseConnector):
             actor_name=mr.get("author", {}).get("name"),
             actor_email=mr.get("author", {}).get("email"),
             source_timestamp=_parse_dt(mr.get("updated_at") or mr.get("created_at")),
-            metadata={
+            extra={
                 "iid": mr.get("iid"),
                 "state": mr.get("state"),
                 "source_branch": mr.get("source_branch"),
@@ -275,7 +275,7 @@ class GitLabConnector(BaseConnector):
             actor_name=note.get("author", {}).get("name"),
             actor_email=note.get("author", {}).get("email"),
             source_timestamp=_parse_dt(note.get("updated_at") or note.get("created_at")),
-            metadata={
+            extra={
                 "parent_type": parent_type,
                 "parent_iid": parent.get("iid"),
                 "parent_title": parent.get("title"),
@@ -297,7 +297,7 @@ class GitLabConnector(BaseConnector):
             actor_name=commit.get("author_name"),
             actor_email=commit.get("author_email"),
             source_timestamp=_parse_dt(commit.get("committed_date") or commit.get("created_at")),
-            metadata={
+            extra={
                 "short_id": commit.get("short_id"),
                 "stats": commit.get("stats", {}),
             },
@@ -316,7 +316,7 @@ class GitLabConnector(BaseConnector):
             actor_name=None,
             actor_email=None,
             source_timestamp=_parse_dt(ms.get("updated_at") or ms.get("created_at")),
-            metadata={
+            extra={
                 "state": ms.get("state"),
                 "due_date": ms.get("due_date"),
                 "start_date": ms.get("start_date"),
@@ -338,7 +338,7 @@ class GitLabConnector(BaseConnector):
             actor_name=user.get("name"),
             actor_email=user.get("email"),
             source_timestamp=_parse_dt(attrs.get("updated_at")),
-            metadata={
+            extra={
                 "iid": attrs.get("iid"),
                 "state": attrs.get("state"),
                 "action": attrs.get("action"),
@@ -359,7 +359,7 @@ class GitLabConnector(BaseConnector):
             actor_name=user.get("name"),
             actor_email=user.get("email"),
             source_timestamp=_parse_dt(attrs.get("updated_at")),
-            metadata={
+            extra={
                 "iid": attrs.get("iid"),
                 "state": attrs.get("state"),
                 "action": attrs.get("action"),
@@ -384,7 +384,7 @@ class GitLabConnector(BaseConnector):
             actor_name=user.get("name"),
             actor_email=user.get("email"),
             source_timestamp=_parse_dt(attrs.get("updated_at")),
-            metadata={
+            extra={
                 "parent_type": parent_type,
                 "parent_iid": parent.get("iid"),
                 "noteable_type": attrs.get("noteable_type"),
@@ -404,7 +404,7 @@ class GitLabConnector(BaseConnector):
             actor_name=commit.get("author", {}).get("name"),
             actor_email=commit.get("author", {}).get("email"),
             source_timestamp=_parse_dt(commit.get("timestamp")),
-            metadata={
+            extra={
                 "added": commit.get("added", []),
                 "modified": commit.get("modified", []),
                 "removed": commit.get("removed", []),

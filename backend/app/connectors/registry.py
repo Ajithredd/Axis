@@ -31,7 +31,7 @@ class ConnectorRegistry:
         """Manually register a connector instance."""
         info = connector.info()
         self._connectors[info.type] = connector
-        print(f"  ✓ Registered connector: {info.display_name} ({info.type})")
+        print(f"  [OK] Registered connector: {info.display_name} ({info.type})")
 
     def get(self, connector_type: str) -> BaseConnector | None:
         """Get a connector by its type identifier."""
@@ -93,7 +93,7 @@ class ConnectorRegistry:
                         break  # One connector per module
 
             except Exception as e:
-                print(f"  ✗ Failed to load connector from {item.name}: {e}")
+                print(f"  [ERROR] Failed to load connector from {item.name}: {e}")
 
 
 # Global singleton

@@ -28,7 +28,7 @@ async def close_qdrant_client() -> None:
 async def init_qdrant_collections() -> None:
     """Ensure required collections exist in Qdrant."""
     client = get_qdrant_client()
-    collections_to_create = ["requirements", "decisions", "events"]
+    collections_to_create = ["requirements", "decisions", "events", "features", "stakeholders"]
     
     try:
         existing = await client.get_collections()

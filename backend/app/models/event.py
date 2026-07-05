@@ -77,9 +77,6 @@ class Event(Base):
 
     # --- Relationships ---
     project: Mapped["Project"] = relationship(back_populates="events")
-    embeddings: Mapped[list["Embedding"]] = relationship(
-        back_populates="event", cascade="all, delete-orphan"
-    )
 
     def __repr__(self) -> str:
         return f"<Event {self.event_type} from {self.connector_type}: {self.title}>"

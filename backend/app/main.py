@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import init_db
-from app.api import auth, graph, projects, search, webhooks, chat
+from app.api import auth, graph, projects, search, webhooks, chat, documents
 from app.connectors.registry import connector_registry
 
 
@@ -20,7 +20,7 @@ async def lifespan(app: FastAPI):
     await init_db()
     await init_qdrant_collections()
     connector_registry.discover()
-    print(f"✓ Registered connectors: {list(connector_registry.list_connectors().keys())}")
+    print(f"[OK] Registered connectors: {list(connector_registry.list_connectors().keys())}")
     yield
     # --- Shutdown ---
     await close_qdrant_client()
@@ -50,6 +50,7 @@ app.include_router(projects.router, prefix="/api/projects", tags=["Projects"])
 app.include_router(search.router, prefix="/api/search", tags=["Search"])
 app.include_router(chat.router, prefix="/api/chat", tags=["AI Chat"])
 app.include_router(webhooks.router, prefix="/api/webhooks", tags=["Webhooks"])
+app.include_router(documents.router, prefix="/api/documents", tags=["Documents"])
 
 
 @app.get("/api/health")

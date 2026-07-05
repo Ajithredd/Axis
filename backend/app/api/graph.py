@@ -297,3 +297,57 @@ async def traverse_graph(
         max_depth=payload.max_depth,
         edge_types=payload.edge_types,
     )
+
+
+# ---------------------------------------------------------------------------
+# Node Detail Lookups (for Frontend Graph Inspector)
+# ---------------------------------------------------------------------------
+
+@router.get("/features/{feature_id}")
+async def get_feature(
+    feature_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.feature import Feature
+    feature = await db.get(Feature, feature_id)
+    if not feature:
+        raise HTTPException(status_code=404, detail="Feature not found")
+    return {
+        "id": str(feature.id),
+        "name": feature.name,
+        "description": feature.description,
+        "status": feature.status.value if hasattr(feature.status, "value") else str(feature.status),
+    }
+
+
+@router.get("/stakeholders/{stakeholder_id}")
+async def get_stakeholder(
+    stakeholder_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    stakeholder = await graph_service.get_stakeholder(db, stakeholder_id)
+    if not stakeholder:
+        raise HTTPException(status_code=404, detail="Stakeholder not found")
+    return {
+        "id": str(stakeholder.id),
+        "display_name": stakeholder.display_name,
+        "email": stakeholder.email,
+        "role": stakeholder.role.value if hasattr(stakeholder.role, "value") else str(stakeholder.role),
+    }
+
+
+@router.get("/events/{event_id}")
+async def get_event(
+    event_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.event import Event
+    event = await db.get(Event, event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return {
+        "id": str(event.id),
+        "title": event.title,
+        "content": event.content,
+        "event_type": event.event_type,
+    }

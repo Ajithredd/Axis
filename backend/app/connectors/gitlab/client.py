@@ -19,7 +19,10 @@ class GitLabClient:
     def __init__(self, access_token: str, gitlab_url: str | None = None):
         self.base_url = (gitlab_url or settings.gitlab_url).rstrip("/")
         self.api_url = f"{self.base_url}/api/v4"
-        self.headers = {"Authorization": f"Bearer {access_token}"}
+        if access_token.startswith("glpat-"):
+            self.headers = {"PRIVATE-TOKEN": access_token}
+        else:
+            self.headers = {"Authorization": f"Bearer {access_token}"}
         self._client = httpx.AsyncClient(
             headers=self.headers,
             timeout=30.0,

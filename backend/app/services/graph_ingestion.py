@@ -353,42 +353,123 @@ class GraphIngestionEngine:
     async def _create_requirement(
         self, event: Event, extracted: ExtractedRequirement
     ) -> Requirement:
-        """Create a Requirement node from an extraction result."""
-        req = Requirement(
-            project_id=event.project_id,
-            title=extracted.title,
-            description=extracted.description,
-            requirement_type=extracted.requirement_type,
-            status=RequirementStatus.DRAFT,
-            confidence=extracted.confidence,
-            source_event_id=event.id,
-            extra_metadata={
+        """Create or update a Requirement node from an extraction result and sync to Qdrant."""
+        from datetime import datetime
+        from app.services.vector_sync import sync_node_to_vector_store
+        
+        # Check if a requirement with identical title+project_id or source_event_id already exists
+        stmt = select(Requirement).where(
+            (Requirement.project_id == event.project_id) &
+            (
+                (Requirement.source_event_id == event.id) |
+                (Requirement.title == extracted.title)
+            )
+        )
+        res = await self.db.execute(stmt)
+        req = res.scalar_one_or_none()
+
+        if req:
+            req.description = extracted.description
+            req.requirement_type = extracted.requirement_type
+            req.confidence = extracted.confidence
+            req.extra_metadata = {
                 "extracted_from": event.event_type,
                 "source_url": event.source_url,
-            },
-        )
-        self.db.add(req)
+                "updated_at": datetime.utcnow().isoformat()
+            }
+            logger.info(f"Deduplicated: updating existing Requirement node {req.id} (Title: {req.title})")
+        else:
+            req = Requirement(
+                project_id=event.project_id,
+                title=extracted.title,
+                description=extracted.description,
+                requirement_type=extracted.requirement_type,
+                status=RequirementStatus.DRAFT,
+                confidence=extracted.confidence,
+                source_event_id=event.id,
+                extra_metadata={
+                    "extracted_from": event.event_type,
+                    "source_url": event.source_url,
+                },
+            )
+            self.db.add(req)
+            logger.info(f"Creating new Requirement node (Title: {req.title})")
+            
         await self.db.flush()
+
+        # Synchronize to Qdrant vector store
+        try:
+            await sync_node_to_vector_store(
+                collection_name="requirements",
+                node_id=req.id,
+                project_id=req.project_id,
+                node_type="requirements",
+                content=f"{req.title}: {req.description or ''}",
+                metadata={"title": req.title}
+            )
+        except Exception as vec_err:
+            logger.error(f"Failed to sync requirement {req.id} to vector store: {vec_err}")
+
         return req
 
     async def _create_decision(
         self, event: Event, extracted: ExtractedDecision
     ) -> Decision:
-        """Create a Decision node from an extraction result."""
-        dec = Decision(
-            project_id=event.project_id,
-            title=extracted.title,
-            rationale=extracted.rationale,
-            status=DecisionStatus.PROPOSED,
-            confidence=extracted.confidence,
-            source_event_id=event.id,
-            extra_metadata={
+        """Create or update a Decision node from an extraction result and sync to Qdrant."""
+        from datetime import datetime
+        from app.services.vector_sync import sync_node_to_vector_store
+
+        # Check if a decision with identical title+project_id or source_event_id already exists
+        stmt = select(Decision).where(
+            (Decision.project_id == event.project_id) &
+            (
+                (Decision.source_event_id == event.id) |
+                (Decision.title == extracted.title)
+            )
+        )
+        res = await self.db.execute(stmt)
+        dec = res.scalar_one_or_none()
+
+        if dec:
+            dec.rationale = extracted.rationale
+            dec.confidence = extracted.confidence
+            dec.extra_metadata = {
                 "extracted_from": event.event_type,
                 "source_url": event.source_url,
-            },
-        )
-        self.db.add(dec)
+                "updated_at": datetime.utcnow().isoformat()
+            }
+            logger.info(f"Deduplicated: updating existing Decision node {dec.id} (Title: {dec.title})")
+        else:
+            dec = Decision(
+                project_id=event.project_id,
+                title=extracted.title,
+                rationale=extracted.rationale,
+                status=DecisionStatus.PROPOSED,
+                confidence=extracted.confidence,
+                source_event_id=event.id,
+                extra_metadata={
+                    "extracted_from": event.event_type,
+                    "source_url": event.source_url,
+                },
+            )
+            self.db.add(dec)
+            logger.info(f"Creating new Decision node (Title: {dec.title})")
+
         await self.db.flush()
+
+        # Synchronize to Qdrant vector store
+        try:
+            await sync_node_to_vector_store(
+                collection_name="decisions",
+                node_id=dec.id,
+                project_id=dec.project_id,
+                node_type="decisions",
+                content=f"{dec.title}: {dec.rationale or ''}",
+                metadata={"title": dec.title}
+            )
+        except Exception as vec_err:
+            logger.error(f"Failed to sync decision {dec.id} to vector store: {vec_err}")
+
         return dec
 
     async def _create_edge(

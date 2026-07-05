@@ -5,7 +5,7 @@ This is the pipeline:
   1. Connector fetches data → NormalizedEvents
   2. Events are stored in the immutable event log
   3. Each event's text is chunked and embedded
-  4. Embeddings are stored in pgvector for semantic search
+  4. Embeddings are stored in Qdrant for semantic search
 """
 
 import uuid
@@ -14,12 +14,13 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.event import Event
-from app.models.embedding import Embedding
 from app.models.project import ProjectConnector, SyncStatus
 from app.connectors.base import NormalizedEvent
 from app.connectors.registry import connector_registry
-from app.services.embedding import chunk_text, content_hash, generate_embeddings
+from app.services.embedding import chunk_text, content_hash
+from app.services.vector_sync import sync_node_to_vector_store
 from app.services.graph_ingestion import GraphIngestionEngine
 
 
@@ -84,13 +85,16 @@ async def ingest_project(
             await db.flush()  # Get the event ID
             stats["events_created"] += 1
 
-            # Generate embeddings for this event
+            # Generate embeddings and sync to Qdrant
             text = event.searchable_text
             if text:
-                chunks = chunk_text(text)
+                chunks = chunk_text(
+                    text,
+                    chunk_size=settings.child_chunk_size,
+                    chunk_overlap=settings.child_chunk_overlap,
+                )
                 if chunks:
-                    embeddings_created = await _embed_chunks(
-                        db=db,
+                    embeddings_created = await _embed_chunks_to_qdrant(
                         event=event,
                         chunks=chunks,
                     )
@@ -157,13 +161,13 @@ async def ingest_webhook_events(
             # Re-embed if content changed
             text = existing_event.searchable_text
             if text:
-                new_hash = content_hash(text)
-                # Delete old embeddings and create new ones
-                for emb in existing_event.embeddings:
-                    await db.delete(emb)
-                chunks = chunk_text(text)
+                chunks = chunk_text(
+                    text,
+                    chunk_size=settings.child_chunk_size,
+                    chunk_overlap=settings.child_chunk_overlap,
+                )
                 if chunks:
-                    count = await _embed_chunks(db, existing_event, chunks)
+                    count = await _embed_chunks_to_qdrant(existing_event, chunks)
                     stats["embeddings_created"] += count
         else:
             # Create new event
@@ -186,9 +190,13 @@ async def ingest_webhook_events(
 
             text = event.searchable_text
             if text:
-                chunks = chunk_text(text)
+                chunks = chunk_text(
+                    text,
+                    chunk_size=settings.child_chunk_size,
+                    chunk_overlap=settings.child_chunk_overlap,
+                )
                 if chunks:
-                    count = await _embed_chunks(db, event, chunks)
+                    count = await _embed_chunks_to_qdrant(event, chunks)
                     stats["embeddings_created"] += count
 
             # Hook: process event into Intelligence Graph
@@ -205,32 +213,43 @@ async def ingest_webhook_events(
     return stats
 
 
-async def _embed_chunks(
-    db: AsyncSession,
+async def _embed_chunks_to_qdrant(
     event: Event,
     chunks: list[str],
 ) -> int:
-    """Generate and store embeddings for text chunks."""
-    # Batch embed all chunks at once
-    vectors = await generate_embeddings(chunks)
+    """Generate embeddings via Qdrant vector_sync for text chunks.
 
+    Each chunk is upserted to the ``events`` Qdrant collection with a
+    deterministic UUID derived from event ID + chunk index so that
+    re-indexing the same event naturally overwrites old points.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
     count = 0
-    for i, (chunk, vector) in enumerate(zip(chunks, vectors)):
-        embedding = Embedding(
-            event_id=event.id,
-            project_id=event.project_id,
-            chunk_text=chunk,
-            chunk_index=i,
-            vector=vector,
-            content_hash=content_hash(chunk),
-            connector_type=event.connector_type,
-            event_type=event.event_type,
-            source_url=event.source_url,
-            title=event.title,
-            actor_name=event.actor_name,
-            source_timestamp=event.source_timestamp,
-        )
-        db.add(embedding)
-        count += 1
+
+    for i, chunk in enumerate(chunks):
+        # Deterministic UUID: same event + chunk index = same point ID
+        chunk_id = uuid.uuid5(event.id, f"chunk-{i}")
+        try:
+            ok = await sync_node_to_vector_store(
+                collection_name="events",
+                node_id=chunk_id,
+                project_id=event.project_id,
+                node_type="events",
+                content=chunk,
+                metadata={
+                    "title": event.title,
+                    "event_type": event.event_type,
+                    "source_url": event.source_url,
+                    "actor_name": event.actor_name,
+                    "chunk_index": i,
+                    "parent_event_id": str(event.id),
+                    "content_hash": content_hash(chunk),
+                },
+            )
+            if ok:
+                count += 1
+        except Exception as e:
+            logger.error(f"Failed to sync event chunk {i} for event {event.id}: {e}")
 
     return count

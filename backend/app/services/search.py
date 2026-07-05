@@ -18,7 +18,8 @@ from qdrant_client.http import models
 
 from app.database.qdrant import get_qdrant_client
 from app.services.embeddings import embedding_engine
-from app.models.graph import Requirement, Decision
+from app.models.graph import Requirement, Decision, Stakeholder
+from app.models.feature import Feature
 from app.models.event import Event
 from app.services.graph import get_node_with_edges
 
@@ -52,7 +53,7 @@ async def semantic_search_qdrant(
         return []
 
     client = get_qdrant_client()
-    collections = ["requirements", "decisions", "events"]
+    collections = ["requirements", "decisions", "events", "features", "stakeholders"]
     if node_types:
         collections = [c for c in collections if c in node_types]
 
@@ -98,65 +99,147 @@ async def keyword_search_postgres(
     limit: int = 10,
     node_types: List[str] | None = None
 ) -> List[dict]:
-    """Perform full-text search using ILIKE across Postgres tables."""
-    all_results = []
-    search_term = f"%{query}%"
+    """Perform full-text search across Postgres tables using tsvector and websearch_to_tsquery."""
+    from sqlalchemy import func
 
-    collections = ["requirements", "decisions", "events"]
+    if not query or not query.strip():
+        return []
+
+    collections = ["requirements", "decisions", "events", "features", "stakeholders"]
     if node_types:
         collections = [c for c in collections if c in node_types]
 
+    all_results = []
+    # Use websearch_to_tsquery for robust Google-like search syntax parsing
+    ts_query = func.websearch_to_tsquery("english", query)
+
     if "requirements" in collections:
-        stmt = select(Requirement).where(
+        # Title has weight 'A' (1.0), description has weight 'B' (0.4)
+        from sqlalchemy import literal_column
+        ts_vector = (
+            func.setweight(func.to_tsvector("english", func.coalesce(Requirement.title, "")), literal_column("'A'::\"char\"")).op("||")(
+            func.setweight(func.to_tsvector("english", func.coalesce(Requirement.description, "")), literal_column("'B'::\"char\"")))
+        )
+        stmt = select(
+            Requirement,
+            func.ts_rank_cd(ts_vector, ts_query).label("score")
+        ).where(
             Requirement.project_id == project_id,
-            or_(
-                Requirement.title.ilike(search_term),
-                Requirement.description.ilike(search_term)
-            )
-        ).limit(limit)
+            ts_vector.op("@@")(ts_query)
+        ).order_by(func.ts_rank_cd(ts_vector, ts_query).desc()).limit(limit)
+
         res = await db.execute(stmt)
-        for req in res.scalars().all():
+        for req, score in res.all():
             all_results.append({
                 "id": str(req.id),
                 "title": req.title,
                 "content": req.description or "",
-                "node_type": "requirements"
+                "node_type": "requirements",
+                "project_id": str(req.project_id),
+                "score": float(score)
             })
 
     if "decisions" in collections:
-        stmt = select(Decision).where(
+        from sqlalchemy import literal_column
+        ts_vector = (
+            func.setweight(func.to_tsvector("english", func.coalesce(Decision.title, "")), literal_column("'A'::\"char\"")).op("||")(
+            func.setweight(func.to_tsvector("english", func.coalesce(Decision.rationale, "")), literal_column("'B'::\"char\"")))
+        )
+        stmt = select(
+            Decision,
+            func.ts_rank_cd(ts_vector, ts_query).label("score")
+        ).where(
             Decision.project_id == project_id,
-            or_(
-                Decision.title.ilike(search_term),
-                Decision.rationale.ilike(search_term)
-            )
-        ).limit(limit)
+            ts_vector.op("@@")(ts_query)
+        ).order_by(func.ts_rank_cd(ts_vector, ts_query).desc()).limit(limit)
+
         res = await db.execute(stmt)
-        for dec in res.scalars().all():
+        for dec, score in res.all():
             all_results.append({
                 "id": str(dec.id),
                 "title": dec.title,
                 "content": dec.rationale or "",
-                "node_type": "decisions"
+                "node_type": "decisions",
+                "project_id": str(dec.project_id),
+                "score": float(score)
             })
 
     if "events" in collections:
-        stmt = select(Event).where(
+        from sqlalchemy import literal_column
+        ts_vector = (
+            func.setweight(func.to_tsvector("english", func.coalesce(Event.title, "")), literal_column("'A'::\"char\"")).op("||")(
+            func.setweight(func.to_tsvector("english", func.coalesce(Event.content, "")), literal_column("'B'::\"char\"")))
+        )
+        stmt = select(
+            Event,
+            func.ts_rank_cd(ts_vector, ts_query).label("score")
+        ).where(
             Event.project_id == project_id,
-            or_(
-                Event.title.ilike(search_term),
-                Event.content.ilike(search_term)
-            )
-        ).limit(limit)
+            ts_vector.op("@@")(ts_query)
+        ).order_by(func.ts_rank_cd(ts_vector, ts_query).desc()).limit(limit)
+
         res = await db.execute(stmt)
-        for ev in res.scalars().all():
+        for ev, score in res.all():
             all_results.append({
                 "id": str(ev.id),
                 "title": ev.title,
                 "content": ev.content or "",
-                "node_type": "events"
+                "node_type": "events",
+                "project_id": str(ev.project_id),
+                "score": float(score)
             })
 
+    if "features" in collections:
+        from sqlalchemy import literal_column
+        ts_vector = (
+            func.setweight(func.to_tsvector("english", func.coalesce(Feature.name, "")), literal_column("'A'::\"char\"")).op("||")(
+            func.setweight(func.to_tsvector("english", func.coalesce(Feature.description, "")), literal_column("'B'::\"char\"")))
+        )
+        stmt = select(
+            Feature,
+            func.ts_rank_cd(ts_vector, ts_query).label("score")
+        ).where(
+            Feature.project_id == project_id,
+            ts_vector.op("@@")(ts_query)
+        ).order_by(func.ts_rank_cd(ts_vector, ts_query).desc()).limit(limit)
+
+        res = await db.execute(stmt)
+        for feat, score in res.all():
+            all_results.append({
+                "id": str(feat.id),
+                "title": feat.name,
+                "content": feat.description or "",
+                "node_type": "features",
+                "project_id": str(feat.project_id),
+                "score": float(score)
+            })
+
+    if "stakeholders" in collections:
+        from sqlalchemy import literal_column
+        ts_vector = (
+            func.setweight(func.to_tsvector("english", func.coalesce(Stakeholder.display_name, "")), literal_column("'A'::\"char\"")).op("||")(
+            func.setweight(func.to_tsvector("english", func.coalesce(Stakeholder.email, "")), literal_column("'B'::\"char\"")))
+        )
+        stmt = select(
+            Stakeholder,
+            func.ts_rank_cd(ts_vector, ts_query).label("score")
+        ).where(
+            Stakeholder.project_id == project_id,
+            ts_vector.op("@@")(ts_query)
+        ).order_by(func.ts_rank_cd(ts_vector, ts_query).desc()).limit(limit)
+
+        res = await db.execute(stmt)
+        for sh, score in res.all():
+            all_results.append({
+                "id": str(sh.id),
+                "title": sh.display_name,
+                "content": f"{sh.display_name} ({sh.role.value})" + (f" - {sh.email}" if sh.email else ""),
+                "node_type": "stakeholders",
+                "project_id": str(sh.project_id),
+                "score": float(score)
+            })
+
+    all_results.sort(key=lambda x: x["score"], reverse=True)
     return all_results[:limit]
 
 
@@ -182,7 +265,7 @@ def compute_rrf(semantic_results: List[dict], keyword_results: List[dict]) -> Li
                     "node_id": node_id,
                     "node_type": res["node_type"],
                     "content": res["content"],
-                    "project_id": str(res.get("project_id", "")), # Not fetched, but okay
+                    "project_id": str(res.get("project_id", "")),
                 },
                 "title": res["title"]
             }
@@ -201,6 +284,61 @@ def compute_rrf(semantic_results: List[dict], keyword_results: List[dict]) -> Li
     return fused
 
 
+def deduplicate_results(results: List[SearchResult]) -> List[SearchResult]:
+    """
+    Deduplicate search results based on exact content match or high title similarity.
+    Keeps the highest scoring result for each unique document.
+    """
+    seen_contents = set()
+    unique_results = []
+
+    for res in results:
+        content_norm = " ".join((res.content or "").strip().lower().split())
+        title_norm = " ".join((res.title or "").strip().lower().split())
+        
+        # Remove punctuation for better comparison
+        punctuation = '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'
+        title_clean = title_norm.translate(str.maketrans('', '', punctuation))
+
+        # Check exact content match
+        if content_norm and content_norm in seen_contents:
+            logger.info(f"Deduplicating node {res.node_id} due to duplicate content.")
+            continue
+
+        # Check title similarity with already accepted results
+        duplicate_title = False
+        for accepted in unique_results:
+            accepted_title_norm = " ".join((accepted.title or "").strip().lower().split())
+            accepted_title_clean = accepted_title_norm.translate(str.maketrans('', '', punctuation))
+            
+            if not title_clean or not accepted_title_clean:
+                continue
+
+            # Exact match of cleaned title
+            if title_clean == accepted_title_clean:
+                duplicate_title = True
+                break
+
+            # Word-level Jaccard similarity
+            w1 = set(title_clean.split())
+            w2 = set(accepted_title_clean.split())
+            if w1 and w2:
+                jaccard = len(w1.intersection(w2)) / len(w1.union(w2))
+                if jaccard >= 0.85:
+                    duplicate_title = True
+                    break
+        
+        if duplicate_title:
+            logger.info(f"Deduplicating node {res.node_id} due to similar title: '{res.title}'")
+            continue
+
+        if content_norm:
+            seen_contents.add(content_norm)
+        unique_results.append(res)
+
+    return unique_results
+
+
 async def hybrid_search(
     db: AsyncSession,
     query: str,
@@ -211,14 +349,14 @@ async def hybrid_search(
     """
     Perform hybrid search (Semantic + Keyword) and enrich with graph context.
     """
-    semantic_task = semantic_search_qdrant(query, project_id, limit, node_types)
-    keyword_task = keyword_search_postgres(db, query, project_id, limit, node_types)
-
-    semantic_res, keyword_res = await asyncio.gather(semantic_task, keyword_task)
+    # Fetch extra candidates so we can deduplicate them and still return up to limit
+    search_limit = max(limit * 2, 20)
+    
+    semantic_res = await semantic_search_qdrant(query, project_id, search_limit, node_types)
+    keyword_res = await keyword_search_postgres(db, query, project_id, search_limit, node_types)
 
     fused_results = compute_rrf(semantic_res, keyword_res)
-    fused_results = fused_results[:limit]
-
+    
     final_results = []
     for item in fused_results:
         payload = item.get("payload", {})
@@ -230,14 +368,26 @@ async def hybrid_search(
             continue
             
         node_type = payload.get("node_type", "unknown")
+        content = payload.get("content", "")
+
+        # Parent-Child Retrieval: If it's an event chunk, resolve the parent event
+        if node_type == "events":
+            parent_id_str = payload.get("metadata", {}).get("parent_event_id")
+            if parent_id_str:
+                try:
+                    parent_id = uuid.UUID(parent_id_str)
+                    stmt = select(Event).where(Event.id == parent_id)
+                    db_res = await db.execute(stmt)
+                    parent_event = db_res.scalar_one_or_none()
+                    if parent_event:
+                        node_id = parent_id
+                        content = parent_event.content or ""
+                except Exception as e:
+                    logger.warning(f"Failed to fetch parent event {parent_id_str}: {e}")
         
         # Enrich with graph context (1-degree BFS)
         try:
-            # We need to map 'requirements' -> 'requirement', etc for graph.py
-            # But get_node_with_edges might expect the table name or the class name.
-            # get_node_with_edges expects Node ID and the actual graph DB lookup.
-            # Actually get_node_with_edges(db, node_id) looks up by ID across tables.
-            graph_data = await get_node_with_edges(db, node_id)
+            graph_data = await get_node_with_edges(db, node_id, node_type=node_type)
             graph_context = {
                 "incoming_edges": [
                     {"type": e.edge_type.value, "source": str(e.source_id)}
@@ -251,15 +401,43 @@ async def hybrid_search(
         except Exception:
             graph_context = None
 
+        title = item.get("title") or payload.get("metadata", {}).get("title")
+        if not title or title.lower() in ("untitled", "untitled document"):
+            try:
+                if node_type == "requirements":
+                    db_node = await db.get(Requirement, node_id)
+                    if db_node and db_node.title:
+                        title = db_node.title
+                elif node_type == "decisions":
+                    db_node = await db.get(Decision, node_id)
+                    if db_node and db_node.title:
+                        title = db_node.title
+                elif node_type == "events":
+                    db_node = await db.get(Event, node_id)
+                    if db_node and db_node.title:
+                        title = db_node.title
+                elif node_type == "features":
+                    db_node = await db.get(Feature, node_id)
+                    if db_node and db_node.name:
+                        title = db_node.name
+                elif node_type == "stakeholders":
+                    db_node = await db.get(Stakeholder, node_id)
+                    if db_node and db_node.display_name:
+                        title = db_node.display_name
+            except Exception as e:
+                logger.warning(f"Failed to fetch fallback title for {node_type} {node_id}: {e}")
+
         final_results.append(SearchResult(
             node_id=node_id,
             project_id=project_id,
             node_type=node_type,
-            content=payload.get("content", ""),
+            content=content,
             score=item["rrf_score"],
-            title=item.get("title") or payload.get("metadata", {}).get("title"),
+            title=title or "Untitled",
             metadata=payload.get("metadata", {}),
             graph_context=graph_context
         ))
 
-    return final_results
+    # Apply search result deduplication
+    deduplicated = deduplicate_results(final_results)
+    return deduplicated[:limit]

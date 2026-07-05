@@ -10,11 +10,25 @@ class GitLabService:
     def __init__(self, token: Optional[str] = None, url: Optional[str] = None):
         self.token = token or settings.gitlab_personal_access_token
         self.url = url or settings.gitlab_url
-        self.gl = gitlab.Gitlab(self.url, private_token=self.token)
+        if self.token and self.token.startswith("glpat-"):
+            self.gl = gitlab.Gitlab(self.url, private_token=self.token)
+        elif self.token:
+            self.gl = gitlab.Gitlab(self.url, oauth_token=self.token)
+        else:
+            self.gl = gitlab.Gitlab(self.url)
 
     def get_project(self, project_id: str):
         """Get a GitLab project by ID."""
         return self.gl.projects.get(project_id)
+
+    def list_user_projects(self, search: str = None):
+        """List GitLab projects the authenticated user is a member of."""
+        kwargs = {"membership": True, "order_by": "updated_at", "sort": "desc"}
+        if search:
+            kwargs["search"] = search
+        # Using pagination, we can fetch all or a subset. For now, fetch first page of 100.
+        kwargs["per_page"] = 100
+        return self.gl.projects.list(**kwargs)
 
     def list_issues(self, project_id: str, **kwargs):
         """List issues for a project."""
